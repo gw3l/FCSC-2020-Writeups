@@ -59,6 +59,6 @@ La suite de l'exploit consiste à déproteger la zone mémoire où est stockée 
 
 On est ensuite libre de réaliser toutes les actions possibles, notamment charger la librairie "lib_flag.so" et d'appeler la fonction print_flag() qui affiche le flag.
 
-Pour plus de détails, [le code que j'ai utilisé](exploit.py) .
+Pour plus de détails, voici [le code que j'ai utilisé](exploit.py) .
 
 
